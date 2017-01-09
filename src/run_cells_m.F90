@@ -43,45 +43,47 @@ module run_cells_m
            np_bndry, depletion_weight, adh1, adh2, output_period, periodic)
 
       ! number of points in the mesh
-      np = 4*Lsize(1)*Lsize(2) ! number of points
-      np_tt = 4*(Lsize(1)+2*np_bndry)*(Lsize(2)+2*np_bndry) ! number of points plus boundary points
+      np = 8*Lsize(1)*Lsize(2)*Lsize(3) ! number of points
+      np_tt = 8*(Lsize(1)+2*np_bndry)*(Lsize(2)+2*np_bndry)*(Lsize(3)+2*np_bndry) ! number of points plus boundary points
 
       ALLOCATE(ncell(1:ntype))
 
-      ncell(1:ntype) = (np*density(1:ntype))/(4*cell_radius**2)
-      tcell = sum(ncell(1:ntype))
+      ncell(1:ntype) = 1 ! (np*density(1:ntype))/(4*cell_radius**2)
+      tcell = 1!sum(ncell(1:ntype))
 
       ! partition mesh
-      Lsize_part(1:2) = (/25, 25/)
-      np_part = 4*Lsize_part(1)*Lsize_part(2)
+      Lsize_part(1:3) = (/10, 10, 10/)
+      np_part = 8*Lsize_part(1)*Lsize_part(2)*Lsize_part(3)
       np_part_bndry = 2*Lsize(1)
-      np_part_tt = 4*(Lsize_part(1) + 2*np_part_bndry)*(Lsize_part(2) + 2*np_part_bndry)
+      np_part_tt = 8*(Lsize_part(1) + 2*np_part_bndry)*(Lsize_part(2) + 2*np_part_bndry)*(Lsize_part(3) + 2*np_part_bndry)
       ! allocating matrices and vectors
 
-      ALLOCATE(lxyz(np_tt,1:2))
+      ALLOCATE(lxyz(np_tt,1:3))
       ALLOCATE(lxyz_inv(-Lsize(1)-np_bndry:Lsize(1)+np_bndry, &
-                        -Lsize(2)-np_bndry:Lsize(2)+np_bndry))
-      ALLOCATE(lxyz_part(np_part_tt,1:2))
+                        -Lsize(2)-np_bndry:Lsize(2)+np_bndry,&
+                        -Lsize(3)-np_bndry:Lsize(3)+np_bndry))
+      ALLOCATE(lxyz_part(np_part_tt,1:3))
       ALLOCATE(lxyz_inv_part(-Lsize_part(1)-np_part_bndry:Lsize_part(1)+np_part_bndry, &
-                        -Lsize_part(2)-np_part_bndry:Lsize_part(2)+np_part_bndry))
+                        -Lsize_part(2)-np_part_bndry:Lsize_part(2)+np_part_bndry, &
+                        -Lsize_part(3)-np_part_bndry:Lsize_part(3)+np_part_bndry))
 
       ALLOCATE(cell(0:np_part,tcell))
       ALLOCATE(aux(np,ntype))
       ALLOCATE(adhesion(0:np_part,tcell))
       ALLOCATE(hfield(0:np_part,tcell))
       ALLOCATE(hfield_lapl(0:np_part,tcell))
-      ALLOCATE(gg(1:np,1:2))
+      ALLOCATE(gg(1:np,1:3))
       ALLOCATE(chem(1:np))
-      ALLOCATE(gchem(1:np,1:2))
+      ALLOCATE(gchem(1:np,1:3))
       ALLOCATE(r(1:tcell))
 
-      ALLOCATE(r_cm(1:tcell,1:2))
-      ALLOCATE(r_cm_part(1:tcell,1:2))
+      ALLOCATE(r_cm(1:tcell,1:3))
+      ALLOCATE(r_cm_part(1:tcell,1:3))
       ALLOCATE(volume(1:tcell))
       !call system('rm 001/*')
 
 !      ALLOCATE(gammaw(ntype))
-!      gammaw(1:2) = (/ 1.0, 2.0 /)
+!      gammaw(1:3) = (/ 1.0, 2.0 /)
       cell(0,:)%phi = 0.d0
       cell(0,:)%mu = 0.d0
       cell(0,:)%lapl_mu = 0.d0
@@ -96,33 +98,33 @@ module run_cells_m
 
       call single_cell_init(cell, tcell, ncell, lxyz_part, lxyz_inv_part, sphere, np_sphere, np_part, first=.true.)
 
-      call cahn_hilliard(cell(0:np_part,1), 100000, np_part, 1.0, lxyz_part, lxyz_inv_part)
+      call cahn_hilliard(cell(0:np_part,1), 100, np_part, 1.0, lxyz_part, lxyz_inv_part)
 
       if(tcell.gt.1) then
          call single_cell_init(cell, tcell, ncell, lxyz_part, lxyz_inv_part, sphere, np_sphere, np_part, first=.false.)
       end if
 
 
-      volume_target = M_PI*cell_radius**2
+      volume_target = (4.d0/3.d0)*M_PI*cell_radius**3
       ! initializing simulation box
 
       if(tcell.eq.2) then
-        r(1) = lxyz_inv(0,-7) !(-6,10)
-        r(2) = lxyz_inv(0,7) !(8,-10)
+        r(1) = lxyz_inv(0,-7,0) !(-6,10)
+        r(2) = lxyz_inv(0,7,0) !(8,-10)
       elseif(tcell.eq.1) then
-        r(1) = lxyz_inv(-30,0)
+        r(1) = lxyz_inv(-15,0,0)
       else
-        dr = (/ int(2.0*cell_radius), ntype*int(anint(2.0*cell_radius)) /)
-        dri = (/ 2*int(cell_radius), 2*int(cell_radius) /)
+        dr = (/ int(2.0*cell_radius),  int(2.0*cell_radius), ntype*int(anint(2.0*cell_radius)) /)
+        dri = (/ 2*int(cell_radius), 2*int(cell_radius), 2*int(cell_radius) /)
 
         do itype=1, ntype
-          drf = (/ 2*cell_radius, cell_radius + (ntype-itype)*(int(anint(2*cell_radius))) /)
-          dr = (/ int(2.0*cell_radius), ntype*int(anint(2.0*cell_radius)) /)
+          drf = (/ 2*cell_radius, 2*cell_radius, cell_radius + (ntype-itype)*(int(anint(2*cell_radius))) /)
+          dr = (/ int(2.0*cell_radius), int(2.0*cell_radius), ntype*int(anint(2.0*cell_radius)) /)
           nleap =  tcell-ncell(itype)
           temp = ncell(itype) + (itype-1)*ncell(itype-1)
           call cell_pos_init(r, icell, nleap,  dr, dri, drf, temp, cell_radius, &
                                           lxyz, lxyz_inv, Lsize, np, sphere, np_sphere, iseed)
-          dri(2) = dri(2) +   2*int(cell_radius)
+          dri(3) = dri(3) +   2*int(cell_radius)
 
 
         end do
@@ -135,26 +137,28 @@ module run_cells_m
       ! printing header
       call print_header(Lsize, tcell, ntype, ncell, dir_name, periodic)
       if(tcell.eq.2) then
-        call cm_calc(r_cm, cell, tcell, np, np_part, r, lxyz, lxyz_inv, lxyz_inv_part)
-        write(*,'(A,F10.2,F10.2)') "Cell 1 - Initial Position", r_cm(1,1:2)
-        write(*,'(A,F10.2,F10.2)') "Cell 2 - Initial Position", r_cm(2,1:2)
-        write(*,'(A,F10.2)') "Distance between the cells", r_cm(1,2)-r_cm(2,2)
+        !call cm_calc(r_cm, cell, tcell, np, np_part, r, lxyz, lxyz_inv, lxyz_inv_part)
+        write(*,'(A,I10,I10,I10)') "Cell 1 - Initial Position", lxyz(INT(r(1)),1:3)
+        write(*,'(A,I10,I10,I10)') "Cell 2 - Initial Position", lxyz(INT(r(2)),1:3)
+        write(*,'(A,F10.2)') "Distance between the cells", REAL(lxyz(r(1),2))-REAL(lxyz(r(2),2))
       end if
-      write(*,'(A)') "Initiating the core program... "
+
 
       ! saving the initial condition
-      call output_aux(cell, 100, 7, 'phi0000',dir_name, 1, 1, np_part, lxyz_part)
-      call output_aux(aux, 200, 7, 'aux0000',dir_name, 1, ntype, np, lxyz)
+      !call output_aux(cell, 100, 7, 'phi0000',dir_name, 1, 1, np_part, lxyz_part)
+      !call output_aux(aux, 200, 7, 'aux0000',dir_name, 1, ntype, np, lxyz)
       call output(chem, 300, 7, 'chem0000',dir_name, 1, ntype, np, lxyz)
       cell(0,:)%phi = 0.d0
       cell(0,:)%mu = 0.d0
 
       nstep = 0
+      counter = 0
       cm_calc_counter = 0
       vol_lagrangian = 1.d0
       adh2 = 1.49*adh1
-      metcoef = 1.0
-
+      metcoef = 2.d0
+      chi = 1.d0
+      write(*,'(A)') "Initiating the core program... "
       do while(nstep<=tstep)
          nstep = nstep + 1
 
@@ -198,15 +202,17 @@ module run_cells_m
               ! the adhesion term will be summed after
           !    hfield(ip,icell) = hfunc(cell(ip,icell)%phi)
 
-              chemresponse =  &
-              cell(lxyz_inv_part(lxyz_part(ip,1)+1,lxyz_part(ip,2)),icell)%phi*gchem(lxyz_inv(lxyz(ip_global,1)+1,lxyz(ip_global,2)),1) - &
-              cell(lxyz_inv_part(lxyz_part(ip,1)-1,lxyz_part(ip,2)),icell)%phi*gchem(lxyz_inv(lxyz(ip_global,1)-1,lxyz(ip_global,2)),1) + &
-              cell(lxyz_inv_part(lxyz_part(ip,1),lxyz_part(ip,2)+1),icell)%phi*gchem(lxyz_inv(lxyz(ip_global,1),lxyz(ip_global,2)+1),2) - &
-              cell(lxyz_inv_part(lxyz_part(ip,1),lxyz_part(ip,2)-1),icell)%phi*gchem(lxyz_inv(lxyz(ip_global,1),lxyz(ip_global,2)-1),2)
+              chemresponse = &
+               cell(lxyz_inv_part(lxyz_part(ip,1)+1,lxyz_part(ip,2),lxyz_part(ip,3)),icell)%phi*gchem(lxyz_inv(lxyz(ip_global,1)+1,lxyz(ip_global,2),lxyz(ip_global,3)),1) - &
+               cell(lxyz_inv_part(lxyz_part(ip,1)-1,lxyz_part(ip,2),lxyz_part(ip,3)),icell)%phi*gchem(lxyz_inv(lxyz(ip_global,1)-1,lxyz(ip_global,2),lxyz(ip_global,3)),1) + &
+               cell(lxyz_inv_part(lxyz_part(ip,1),lxyz_part(ip,2)+1,lxyz_part(ip,3)),icell)%phi*gchem(lxyz_inv(lxyz(ip_global,1),lxyz(ip_global,2)+1,lxyz(ip_global,3)),2) - &
+               cell(lxyz_inv_part(lxyz_part(ip,1),lxyz_part(ip,2)-1,lxyz_part(ip,3)),icell)%phi*gchem(lxyz_inv(lxyz(ip_global,1),lxyz(ip_global,2)-1,lxyz(ip_global,3)),2) + &
+               cell(lxyz_inv_part(lxyz_part(ip,1),lxyz_part(ip,2),lxyz_part(ip,3)+1),icell)%phi*gchem(lxyz_inv(lxyz(ip_global,1),lxyz(ip_global,2),lxyz(ip_global,3)+1),3) - &
+               cell(lxyz_inv_part(lxyz_part(ip,1),lxyz_part(ip,2),lxyz_part(ip,3)-1),icell)%phi*gchem(lxyz_inv(lxyz(ip_global,1),lxyz(ip_global,2),lxyz(ip_global,3)-1),3)
 
               cell(ip,icell)%mu = interface_width*cell(ip,icell)%lapl_phi +&
                    cell(ip,icell)%phi*(1.d0-cell(ip,icell)%phi)*(cell(ip,icell)%phi - 0.50 + &
-                   vol_lagrangian*(volume_target-volume(icell)) - depletion_weight*fnu) - chemresponse/2.d0 +&
+                   vol_lagrangian*(volume_target-volume(icell)) - depletion_weight*fnu) - chi*chemresponse/2.d0 +&
                    metcoef*(8.0-16.0*ran2(iseed) )*cell(ip,icell)%phi*(1.d0-cell(ip,icell)%phi)
 
 
@@ -227,7 +233,7 @@ module run_cells_m
          do ip=1, np_part
            do icell=1, tcell
              cell(ip,icell)%mu =  cell(ip,icell)%mu + cell(ip,icell)%phi*(1.0-cell(ip,icell)%phi)*&
-            (  adh1*cell(ip,icell)%lapl_h + adh2*hfield_lapl(ip,icell)) ! 0.0065 , 0.01
+                                  (adh1*cell(ip,icell)%lapl_h + adh2*hfield_lapl(ip,icell)) ! 0.0065 , 0.01
            end do
          end do
 
@@ -240,17 +246,22 @@ module run_cells_m
 
          !cm_calc_counter = cm_calc_counter + 1
          !if(cm_calc_counter.eq.10) then
+
+
            cm_calc_counter = 0
            call cm_calc_local(r_cm_part, cell, tcell, np_part, r, lxyz_part, lxyz_inv_part)
            do icell=1, tcell
-             ip = lxyz_inv_part(int(r_cm_part(icell,1)),int(r_cm_part(icell,2)))
+             ip = lxyz_inv_part(int(r_cm_part(icell,1)),int(r_cm_part(icell,2)),int(r_cm_part(icell,3)))
              call vec_local2global(ip_global, r(icell), ip, lxyz, lxyz_inv, lxyz_part)
-             r_cm(icell,1:2) = lxyz(ip_global,1:2) + FRACTION(r_cm_part(icell,1:2))
+             r_cm(icell,1:3) = lxyz(ip_global,1:3) + FRACTION(r_cm_part(icell,1:3))
            end do
            !call cm_calc(r_cm, cell, tcell, np, np_part, r, lxyz, lxyz_inv, lxyz_inv_part)
-           call move(cell, r_cm, r, np, np_part, tcell, lxyz, lxyz_part, lxyz_inv, lxyz_inv_part,Lsize)
-           !write(*,*) "cell 1", r_cm_part(1,1:2), nstep
-           !write(*,*) "cell 2", r_cm(2,1:2)
+           call move(cell, r_cm, r, np, np_part, tcell, lxyz, lxyz_part, lxyz_inv, lxyz_inv_part, Lsize)
+
+
+        !   write(*,*) r_cm_part(1,1:3), nstep
+        !print*, nstep
+           !write(*,*) "cell 2", r_cm(2,1:3)
          !end if
 
 
@@ -282,15 +293,15 @@ module run_cells_m
 
           !  write(*,*) volume(1:tcell)
             write(file_name,'(I6)') nstep
-            call output_aux(cell, nstep+1, 6, trim(file_name),dir_name, 1, 1, np_part, lxyz_part)
+          !  call output_aux(cell, nstep+1, 6, trim(file_name),dir_name, 1, 1, np_part, lxyz_part)
 
             OPEN (UNIT=100,FILE=dir_name//'/phi'//trim(file_name)//'.xyz')
             !OPEN (UNIT=nstep+2,FILE=dir_name//'/phib'//trim(file_name)//'.xyz')
             do ip=1, np
 
               do itype = 1, ntype
-                 !if(aux(ip,itype)%phi>=0.9) then
-                    write(100,'(I10,I10,F10.2,I10)') lxyz(ip,1:2),aux(ip,itype)%phi, itype
+                 if(aux(ip,itype)%phi>0.0) then
+                    write(100,'(I10,I10,I10, F10.2,I10)') lxyz(ip,1:3),aux(ip,itype)%phi, itype
                 !    if(lxyz(ip,1).eq.lxyz(r(1),1)) then
 
                 !      call vec_global2local(ip_part, r(1), ip, lxyz, lxyz_inv, lxyz_inv_part)
@@ -301,7 +312,7 @@ module run_cells_m
                       !write(nstep+2,'(I10,F10.2,F10.2,F10.2)') lxyz(ip,2), aux(ip,itype)%phi
                 !    end if
 
-                 !end if
+                 end if
               end do
             end do
             close(100)
@@ -349,7 +360,7 @@ module run_cells_m
       implicit none
 
       integer, intent(in) :: tcell, np_part
-      integer, allocatable, intent(in) :: lxyz_part(:,:), lxyz_inv_part(:,:)
+      integer, allocatable, intent(in) :: lxyz_part(:,:), lxyz_inv_part(:,:,:)
       type(mesh_t), allocatable, intent(inout) :: f(:,:)
       real, allocatable, intent(inout) :: r_cm_part(:,:)
       integer, allocatable, intent(inout) :: r(:)
@@ -368,7 +379,7 @@ module run_cells_m
 
             if(f(ip_part,icell)%phi.gt.0.d0) then
                volume(icell) = volume(icell) + f(ip_part,icell)%phi
-               r_cm_part(icell,1:2) = r_cm_part(icell,1:2) + f(ip_part,icell)%phi*lxyz_part(ip_part,1:2)
+               r_cm_part(icell,1:3) = r_cm_part(icell,1:3) + f(ip_part,icell)%phi*lxyz_part(ip_part,1:3)
             end if
          end do
       end do
@@ -376,6 +387,7 @@ module run_cells_m
       ! (sum phi_i r_i )/Volume
       r_cm_part(1:tcell,1) = r_cm_part(1:tcell,1)/volume(1:tcell)
       r_cm_part(1:tcell,2) = r_cm_part(1:tcell,2)/volume(1:tcell)
+      r_cm_part(1:tcell,3) = r_cm_part(1:tcell,3)/volume(1:tcell)
 
 
     end subroutine cm_calc_local
@@ -387,7 +399,7 @@ module run_cells_m
 
       real, allocatable, intent(inout) :: volume(:)
       integer, intent(in) :: np, tcell, np_part
-      integer, allocatable, intent(in) :: lxyz(:,:), lxyz_inv(:,:), lxyz_inv_part(:,:)
+      integer, allocatable, intent(in) :: lxyz(:,:), lxyz_inv(:,:,:), lxyz_inv_part(:,:,:)
       type(mesh_t), allocatable, intent(inout) :: f(:,:)
       integer :: ip, icell, ncell, ip_part, ip_global_m
 
@@ -414,7 +426,7 @@ module run_cells_m
       implicit none
 
       integer, intent(in) :: np, tcell, np_part
-      integer, allocatable, intent(in) :: lxyz(:,:), lxyz_inv(:,:), lxyz_inv_part(:,:)
+      integer, allocatable, intent(in) :: lxyz(:,:), lxyz_inv(:,:,:), lxyz_inv_part(:,:,:)
       type(mesh_t), allocatable, intent(inout) :: f(:,:)
       real, allocatable, intent(inout) :: r_cm(:,:)
       integer, allocatable, intent(inout) :: r(:)
@@ -423,7 +435,7 @@ module run_cells_m
       real :: volume(1:tcell)
 
       volume = 0.d0
-      r_cm(tcell,1:2) = 0.d0
+      r_cm(tcell,1:3) = 0.d0
       do ip=1, np
 
          do icell=1, tcell
@@ -433,7 +445,7 @@ module run_cells_m
 
             if(f(ip_part,icell)%phi.gt.0.d0) then
                volume(icell) = volume(icell) + f(ip_part,icell)%phi
-               r_cm(icell,1:2) = r_cm(icell,1:2) + f(ip_part,icell)%phi*lxyz(ip,1:2)
+               r_cm(icell,1:3) = r_cm(icell,1:3) + f(ip_part,icell)%phi*lxyz(ip,1:3)
             end if
          end do
       end do
@@ -441,6 +453,7 @@ module run_cells_m
       ! (sum phi_i r_i )/Volume
       r_cm(1:tcell,1) = r_cm(1:tcell,1)/volume(1:tcell)
       r_cm(1:tcell,2) = r_cm(1:tcell,2)/volume(1:tcell)
+      r_cm(1:tcell,3) = r_cm(1:tcell,3)/volume(1:tcell)
 
     end subroutine cm_calc
 
@@ -449,14 +462,14 @@ module run_cells_m
       type(mesh_t), allocatable, intent(inout) :: f(:,:)
       real, allocatable, intent(in) :: r_cm(:,:)
       integer, allocatable, intent(inout) :: r(:)
-      integer, intent(in) :: np, np_part, tcell, Lsize(2)
-      integer, allocatable, intent(in) :: lxyz(:,:), lxyz_part(:,:), lxyz_inv(:,:), lxyz_inv_part(:,:)
+      integer, intent(in) :: np, np_part, tcell, Lsize(3)
+      integer, allocatable, intent(in) :: lxyz(:,:), lxyz_part(:,:), lxyz_inv(:,:,:), lxyz_inv_part(:,:,:)
       integer :: ip, icell, ncell, ip_part, ip_global_m
-      real ::  delta_r(1:tcell,1:2), ftemp(1:np_part), dimg(1:tcell,1:2)
+      real ::  delta_r(1:tcell,1:3), ftemp(1:np_part), dimg(1:tcell,1:3)
 
       do icell=1, tcell
         ! I think the problem is the round error in the delta_r
-        delta_r(icell,1:2) = r_cm(icell,1:2)-lxyz(r(icell),1:2)
+        delta_r(icell,1:3) = r_cm(icell,1:3)-lxyz(r(icell),1:3)
 
         !dimg(icell,1) = min(abs(delta_r(icell,1)), 2*Lsize(1)-1-abs(delta_r(icell,1)))
         !dimg(icell,2) = min(abs(delta_r(icell,2)), 2*Lsize(2)-1-abs(delta_r(icell,2)))
@@ -466,11 +479,14 @@ module run_cells_m
           do ip_part=1, np_part
               ! min image method is needed here! maybe.. i don't know
               ftemp(ip_part) = f(lxyz_inv_part( lxyz_part(ip_part,1) + int(anint(delta_r(icell,1))), &
-                                                lxyz_part(ip_part,2) + int(anint(delta_r(icell,2)))), icell )%phi
+                                                lxyz_part(ip_part,2) + int(anint(delta_r(icell,2))), &
+                                                lxyz_part(ip_part,3) + int(anint(delta_r(icell,3)))), icell)%phi
           end do
 
           f(1:np_part,icell)%phi = ftemp(1:np_part)
-          r(icell) = lxyz_inv(int(anint(r_cm(icell,1))) , int(anint(r_cm(icell,2))))
+          r(icell) = lxyz_inv(int(anint(r_cm(icell,1))),&
+                              int(anint(r_cm(icell,2))),&
+                              int(anint(r_cm(icell,3))) )
         !end if
       end do
 

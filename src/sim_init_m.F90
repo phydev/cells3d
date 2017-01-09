@@ -15,8 +15,8 @@ module sim_init_m
     subroutine chemical_init(chem, np, Lsize, lxyz, lxyz_inv)
 
       real, allocatable, intent(inout) :: chem(:)
-      integer, allocatable, intent(in) :: lxyz(:,:), lxyz_inv(:,:)
-      integer, intent(in) :: np, Lsize(2)
+      integer, allocatable, intent(in) :: lxyz(:,:), lxyz_inv(:,:,:)
+      integer, intent(in) :: np, Lsize(3)
       real :: l
       l = Lsize(1)!-1.0
       chem(0) = 0.d0
@@ -40,7 +40,7 @@ module sim_init_m
 
       ! input variables
       type(mesh_t), allocatable, intent(inout) :: cell(:,:)
-      integer, allocatable, intent(in) :: lxyz_part(:,:), lxyz_inv_part(:,:)
+      integer, allocatable, intent(in) :: lxyz_part(:,:), lxyz_inv_part(:,:,:)
       integer, intent(in) ::  tcell, sphere(:,:), np_sphere, np_part, ncell(:)
       logical, intent(in) :: first
 
@@ -53,8 +53,8 @@ module sim_init_m
          cell(0:np_part,1)%phi = 0.d0
          cell(0:np_part,1)%itype = 1.d0
          do l = 1, np_sphere
-            cell(lxyz_inv_part(sphere(l,1),sphere(l,2)),1)%phi = 1.d0
-            cell(lxyz_inv_part(sphere(l,1),sphere(l,2)),1)%itype = 1.d0
+            cell(lxyz_inv_part(sphere(l,1),sphere(l,2),sphere(l,3)),1)%phi = 1.d0
+            cell(lxyz_inv_part(sphere(l,1),sphere(l,2),sphere(l,3)),1)%itype = 1.d0
          end do
       else
          do icell=2,tcell
@@ -81,13 +81,13 @@ module sim_init_m
 
       ! input variables
       integer, allocatable, intent(inout) :: r(:)
-      integer, intent(inout) ::  dr(2), icell
-      integer, allocatable, intent(in) :: lxyz(:,:), lxyz_inv(:,:)
-      integer, intent(in) ::  np, iseed, Lsize(2),  ncell, sphere(:,:),&
-           np_sphere, drf(2), dri(2), nleap
+      integer, intent(inout) ::  dr(3), icell
+      integer, allocatable, intent(in) :: lxyz(:,:), lxyz_inv(:,:,:)
+      integer, intent(in) ::  np, iseed, Lsize(3),  ncell, sphere(:,:),&
+           np_sphere, drf(3), dri(3), nleap
       real, intent(in) :: cell_radius
       ! internal only
-      integer :: ip, i, j, l
+      integer :: ip, i, j, k, l
 
 
       icell = 1
@@ -95,18 +95,20 @@ module sim_init_m
       do while  (i<= Lsize(1)-drf(1))
           j= -Lsize(2)+dri(2)
          do while (j<= Lsize(2)-drf(2))
+            k = -Lsize(3)+dri(3)
+            do while (k<= Lsize(3) - drf(3))
+                ip = lxyz_inv(i,j,k)
 
-               ip = lxyz_inv(i,j)
+                r(icell) = ip
 
-               r(icell) = ip
-
-               icell = icell + 1
-               j = j + dr(2)
+                icell = icell + 1
+                k = k + dr(3)
 
                !if(icell.ge.nleap) dr(2) = 2*cell_radius
             if (icell.gt.ncell) EXIT
-
-         end do
+          end do
+          j = j + dr(2)
+        end do
          i = i + dr(1)
          if (icell.gt.ncell) EXIT
       end do
@@ -120,11 +122,11 @@ module sim_init_m
       implicit none
 
       ! input/output variables
-      integer, intent(in) ::  Lsize(1:2), np_bndry
-      integer, allocatable, intent(inout) :: lxyz(:,:), lxyz_inv(:,:)
+      integer, intent(in) ::  Lsize(1:3), np_bndry
+      integer, allocatable, intent(inout) :: lxyz(:,:), lxyz_inv(:,:,:)
       ! internal variables
-      integer :: i, j, l, m, n, ip, ip_part, np, ki, kf
-      real :: hs(1:2)
+      integer :: i, j, k, l, m, n, ip, ip_part, np, ki, kf
+      real :: hs(1:3)
       logical :: boundary, periodic
 
       ip = 0
@@ -135,17 +137,17 @@ module sim_init_m
 
       do i=-Lsize(1), Lsize(1)-1
          do j=-Lsize(2), Lsize(2)-1
+           do k=-Lsize(3), Lsize(3)-1
 
+                ip = ip + 1
 
-               ip = ip + 1
+                lxyz(ip,1) = i
+                lxyz(ip,2) = j
+                lxyz(ip,3) = k
 
-               lxyz(ip,1) = i
-               lxyz(ip,2) = j
+                lxyz_inv(i,j,k) = ip
 
-
-               lxyz_inv(i,j) = ip
-
-
+             end do
          end do
       end do
 
@@ -154,15 +156,16 @@ module sim_init_m
 
       do i=-Lsize(1)-np_bndry, Lsize(1)-1+np_bndry
          do j=-Lsize(2)-np_bndry, Lsize(2)-1+np_bndry
-
+           do k=-Lsize(3)-np_bndry, Lsize(3)-1+np_bndry
                l = i
                m = j
+               n = k
 
                boundary = .false.
 
                hs(1) = heaviside(real(i))
                hs(2) = heaviside(real(j))
-
+               hs(3) = heaviside(real(k))
                if( abs(i)>Lsize(1)-hs(1)) then
                   boundary = .true.
                   if(periodic) then
@@ -182,6 +185,15 @@ module sim_init_m
                   end if
                end if
 
+               if( abs(k)>Lsize(3)-hs(3)) then
+                  boundary = .true.
+
+                  if(periodic) then
+                     n = k  - SIGN(1,k)*(2*Lsize(3))
+                  else
+                     n = k - SIGN(1,k)
+                  end if
+               end if
 
 
                if(boundary) then
@@ -190,14 +202,15 @@ module sim_init_m
 
                      lxyz(ip_part,1) = l
                      lxyz(ip_part,2) = m
+                     lxyz(ip_part,3) = n
 
-                     lxyz_inv(i,j) = lxyz_inv(l, m)
+                     lxyz_inv(i,j,k) = lxyz_inv(l,m,n)
                   else
                      !ip_part = ip_part + 1
                      !lxyz(ip_part,1) = l
                      !lxyz(ip_part,2) = m
 
-                     lxyz_inv(i,j) =  lxyz_inv(l, m)
+                     lxyz_inv(i,j,k) =  lxyz_inv(l,m,n)
 
                   end if
                end if
@@ -210,7 +223,7 @@ module sim_init_m
                ! lxyz(np_part,1), lxyz(np_part,2), lxyz(np_part,3) ->(l, m, n) in the bulk
                ! then lxyz_inv(m,n,l) will give the updated value in the bulk
                ! for the respective boundary position cell(ip_part)
-
+             end do
          end do
       end do
 
@@ -224,7 +237,7 @@ module sim_init_m
 
       real, allocatable, intent(inout) :: density(:)
       real, intent(inout) :: cell_radius,  interface_width, dt, depletion_weight, adh1, adh2
-      integer, intent(inout) :: tstep, Lsize(2), iseed, np_bndry, dr(2), output_period, ntypes
+      integer, intent(inout) :: tstep, Lsize(3), iseed, np_bndry, dr(3), output_period, ntypes
       character(len=3), intent(inout) :: dir_name
       character(len=255) :: temp
       logical :: periodic
@@ -245,7 +258,7 @@ module sim_init_m
       read(1,*) interface_width, temp ! Eps - Interface Witdh
       read(1,*) tstep, temp ! tstep - Total time step
       read(1,*) dt, temp ! dt - Time increment
-      read(1,*) Lsize(1:2), dr(1:2), temp !Box Length - x,y,z, dr
+      read(1,*) Lsize(1:3), dr(1:3), temp !Box Length - x,y,z, dr
       read(1,*) dir_name, temp ! Simulation name
       read(1,*) iseed, temp ! Initial Seed for RAN2
       read(1,*) np_bndry, temp ! boundary points
@@ -264,7 +277,7 @@ module sim_init_m
       write(2,'(F10.2,A)') interface_width, " interface_width" ! Eps - Interface Witdh
       write(2,'(I10,A)')   tstep, " tstep" ! tstep - Total time step
       write(2,'(F10.5,A)') dt, " dt" ! dt - Time increment
-      write(2,'(I3, I3,  I3, I3, A)') Lsize(1:2), dr(1:2), " box_length_xyz_dr" !Box Length - x,y,z, dr
+      write(2,'(I3, I3, I3, I3,  I3, I3, A)') Lsize(1:3), dr(1:3), " box_length_xyz_dr" !Box Length - x,y,z, dr
       write(2,'(A,A)') dir_name, " dir_name" ! Simulation name
       write(2,'(I10,A)') iseed, " iseed" ! Initial Seed for RAN2
       write(2,'(I10,A)') np_bndry, " bounary_points"! boundary points
@@ -281,7 +294,7 @@ module sim_init_m
     subroutine print_header(Lsize, tcell, ntypes, ncell, dir_name, periodic)
 
       implicit none
-      integer, intent(in) :: Lsize(1:2), ntypes, ncell(:), tcell
+      integer, intent(in) :: Lsize(1:3), ntypes, ncell(:), tcell
       character(len=255) :: cwd, hostname
       character(len=32) :: username
       character(8)  :: date
@@ -298,7 +311,7 @@ module sim_init_m
       call hostnm(hostname)
       call getcwd(cwd)
       call getlog(username)
-      write(*,'(A)') "                                Running Cell"
+      write(*,'(A)') "                                Running Cell3D"
       write(*,'(A)') "       "
       write(*,'(A)') "Version        :       1.0.s (December 14, 2016)"
       write(*,'(A,A)') "Locate         :       ", trim(cwd)
@@ -313,10 +326,10 @@ module sim_init_m
       write(*,'(A)') "       "
       write(*,'(A)') "************************************ Grid *************************************"
       write(*,'(A)') "Simulation Box:"
-      write(*,'(A,I3,A,I3,A,I3,A)') "  Lengths = (",Lsize(1),",", Lsize(2), ")"
-      write(*,'(A)') "  the code will run in 2 dimension(s)."
+      write(*,'(A,I3,A,I3,A,I3,A,I3,A)') "  Lengths = (",Lsize(1),",", Lsize(2), ",",Lsize(3), ")"
+      write(*,'(A)') "  the code will run in 3 dimension(s)."
       if(periodic) then
-         write(*,'(A)') "  the code will treat the system as periodic in 2 dimension(s)."
+         write(*,'(A)') "  the code will treat the system as periodic in 3 dimension(s)."
       else
          write(*,'(A)') "  the code will treat the system as non-periodic."
       end if

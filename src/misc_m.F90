@@ -14,10 +14,10 @@ module misc_m
 
       type(mesh_t), allocatable, intent(in) :: cell(:,:)
       integer, allocatable, intent(in) :: r(:)
-      integer, allocatable, intent(in) :: lxyz(:,:), lxyz_inv(:,:), lxyz_part(:,:), lxyz_inv_part(:,:), ncell(:)
+      integer, allocatable, intent(in) :: lxyz(:,:), lxyz_inv(:,:,:), lxyz_part(:,:), lxyz_inv_part(:,:,:), ncell(:)
       type(mesh_t), allocatable, intent(inout) :: aux(:,:)
       integer, intent(in) ::  ntype, np_part, tcell
-      integer :: icell, itype, b(2), ip_part, ip, rmin(2)
+      integer :: icell, itype, ip_part, ip
 
       aux(:,:)%phi = 0.d0
       do itype = 1, ntype
@@ -117,7 +117,7 @@ module misc_m
       do ip=1, np
          do itypes = itype, ntypes
             !if(aux(ip,itypes)%phi>=0.d0) then
-               write(id,'(I10,I10,F10.2,I10)') lxyz(ip,1:2), aux(ip,itypes)%phi, itypes
+               write(id,'(I10,I10,I10,F10.2,I10)') lxyz(ip,1:3), aux(ip,itypes)%phi, itypes
             !end if
          end do
       end do
@@ -136,9 +136,9 @@ module misc_m
 
       OPEN (UNIT=id,FILE=trim(dir_name//'/'//file_name//'.xyz'))
       do ip=1, np
-              if (lxyz(ip,2).eq.0) then
-                write(id,'(I10,F10.2)') lxyz(ip,1), field(ip)
-              end if
+              !if (lxyz(ip,2).eq.0) then
+                write(id,'(I10,I10,I10,F10.2)') lxyz(ip,1:3), field(ip)
+            !  end if
                !write(id,'(I10,I10,F10.2,I10)') lxyz(ip,1:2), field(ip)
       end do
       close(id)
@@ -152,7 +152,7 @@ module misc_m
       integer, intent(inout) :: ndim
       integer, allocatable, intent(inout) :: R(:,:)
       real :: theta, phi, M_Pi
-      character(len=10) :: dr, ds, sdx, sdy
+      character(len=10) :: dr, ds, sdx, sdy, sdz
       integer :: i, dx, dy, dz
       M_Pi = 3.14159265359
       ! Note:
@@ -173,40 +173,41 @@ module misc_m
 
       i = 0
       theta = 0.0
-
-
       phi = 0.0
-      do while (phi<=2.d0*M_Pi)
-         dx =  int(anint(Rc * cos(phi)) )
-         dy =  int(anint(Rc * sin(phi) ))
 
-         write(sdx,'(I2)') abs(dx)
-         write(sdy,'(I2)') abs(dy)
+      do while (theta<=M_Pi)
+         phi = 0.0
+         do while (phi<=2.d0*M_Pi)
+            dx =  int(anint(Rc * sin(theta) * cos(phi)) )
+            dy =  int(anint(Rc * sin(theta) * sin(phi) ))
+            dz =  int(anint(Rc * cos(theta)) )
+            write(sdx,'(I2)') abs(dx)
+            write(sdy,'(I2)') abs(dy)
+            write(sdz,'(I2)') abs(dz)
 
+            dr = trim(sdx)//trim(sdy)//trim(sdz)
 
-         dr = trim(sdx)//trim(sdy)
+            if (dr .ne. ds) then
+               i = i + 1
 
-         if (dr .ne. ds) then
-            i = i + 1
+               R(i,1) = dx
+               R(i,2) = dy
+               R(i,3) = dz
 
-            R(i,1) = dx
-            R(i,2) = dy
-
-            ds = dr
-         end if
-         phi = phi + delta
+               ds = dr
+            end if
+            phi = phi + delta
+         end do
+         theta = theta + delta
       end do
-      theta = theta + delta
-
 
       i = i +1
-      R(i,1) = 0
-      R(i,2) = 0
-
+	    R(i,1) = 0
+	    R(i,2) = 0
+	    R(i,3) = -Rc
       ndim = i
 
     end subroutine spherical_surface
-
 
 
     subroutine gen_cell_points(Rc,R,ndim)
@@ -216,24 +217,27 @@ module misc_m
       real, intent(in) :: Rc
       integer, intent(inout) :: ndim
       integer, intent(inout) :: R(:,:)
-      real :: dx, i, j,  M_Pi
+      real :: dx, i, j, k, M_Pi
       integer :: counter
       M_Pi = 3.14159265359
       counter = 0
       i = -Rc
       do while(i<=Rc)
-         j =-Rc
+         j = -Rc
          do while (j<=Rc)
-
-               dx = sqrt(i**2 + j**2 )
+           k = -Rc
+           do while(k<=Rc)
+               dx = sqrt(i**2 + j**2 + k**2)
                if(dx <= Rc) then
                   counter = counter + 1
                   R(counter,1) = int(anint(i))
                   R(counter,2) = int(anint(j))
+                  R(counter,3) = int(anint(k))
 
 
                end if
-
+               k = k + 1.d0
+             end do
             j = j +1.d0
          end do
          i = i + 1.d0
@@ -251,11 +255,13 @@ module misc_m
       ! hopelly... :D
       implicit none
 
-      integer, allocatable, intent(in) :: lxyz(:,:),  lxyz_inv(:,:), lxyz_part(:,:)
+      integer, allocatable, intent(in) :: lxyz(:,:),  lxyz_inv(:,:,:), lxyz_part(:,:)
       integer, intent(in) :: ip_global_m, ip_local
       integer, intent(out) :: ip
 
-      ip =  lxyz_inv( lxyz_part(ip_local,1) +lxyz(ip_global_m,1), lxyz_part(ip_local,2) + lxyz(ip_global_m,2) )
+      ip =  lxyz_inv(lxyz_part(ip_local,1) + lxyz(ip_global_m,1), &
+                     lxyz_part(ip_local,2) + lxyz(ip_global_m,2), &
+                     lxyz_part(ip_local,3) + lxyz(ip_global_m,3) )
 
     end subroutine vec_local2global
 
@@ -264,11 +270,13 @@ module misc_m
 
       implicit none
 
-      integer, allocatable, intent(in) :: lxyz(:,:),  lxyz_inv(:,:),  lxyz_inv_part(:,:)
+      integer, allocatable, intent(in) :: lxyz(:,:), lxyz_inv(:,:,:), lxyz_inv_part(:,:,:)
       integer, intent(in) :: ip_global_m, ip
       integer, intent(out) :: ip_part
 
-      ip_part =  lxyz_inv_part( lxyz(ip,1) - lxyz(ip_global_m,1), lxyz(ip,2) - lxyz(ip_global_m,2))
+      ip_part =  lxyz_inv_part( lxyz(ip,1) - lxyz(ip_global_m,1), &
+                                lxyz(ip,2) - lxyz(ip_global_m,2), &
+                                lxyz(ip,3) - lxyz(ip_global_m,3))
 
 
     end subroutine  vec_global2local

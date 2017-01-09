@@ -15,11 +15,11 @@ module derivatives_m
       implicit none
       integer, intent(in) :: nstep, np
       type(mesh_t), intent(inout) :: f(0:np)
-      integer,allocatable, intent(in) :: lxyz(:,:), lxyz_inv(:,:)
+      integer,allocatable, intent(in) :: lxyz(:,:), lxyz_inv(:,:,:)
 
       real, intent(in) :: interface_width
       ! internal variables
-      integer :: tstep, ip, dr(2)
+      integer :: tstep, ip, dr(3)
       real :: dt
       dr(1:2) = 1
       dt = 0.0001
@@ -53,23 +53,24 @@ module derivatives_m
 
       real, allocatable, intent(in) :: f(:)
       real, allocatable, intent(inout) :: gradient(:,:)
-      integer, allocatable, intent(in) :: lxyz(:,:), lxyz_inv(:,:)
-      integer, intent(in) :: np,  dr(2)
-      integer :: ip, i, j
+      integer, allocatable, intent(in) :: lxyz(:,:), lxyz_inv(:,:,:)
+      integer, intent(in) :: np,  dr(3)
+      integer :: ip, i, j, k
 
       do ip=1, np
 
          i = lxyz(ip,1)
          j = lxyz(ip,2)
+         k = lxyz(ip,3)
 
+         gradient(ip,1) = (f( lxyz_inv(i+dr(1),j,k) ) -&
+              f( lxyz_inv(i-dr(1),j,k) ) )/(2.d0*dr(1))
 
-         gradient(ip,1) = (f( lxyz_inv(i+dr(1),j) ) -&
-              f( lxyz_inv(i-dr(1),j) ) )/(2.d0*dr(1))
+         gradient(ip,2) = (f( lxyz_inv(i,j+dr(2),k) ) -&
+              f( lxyz_inv(i,j-dr(2),k) ) )/(2.d0*dr(2))
 
-         gradient(ip,2) = (f( lxyz_inv(i,j+dr(2)) ) -&
-              f( lxyz_inv(i,j-dr(2)) ) )/(2.d0*dr(2))
-
-
+        gradient(ip,3) = (f( lxyz_inv(i,j,k+dr(3)) ) -&
+                   f( lxyz_inv(i,j,k-dr(3)) ) )/(2.d0*dr(3))
 
       end do
 
@@ -81,17 +82,18 @@ module derivatives_m
       implicit none
       integer, intent(in) :: np, dr(2)
       real,  intent(in) :: f(0:np)
-      integer, allocatable, intent(in) :: lxyz(:,:), lxyz_inv(:,:)
+      integer, allocatable, intent(in) :: lxyz(:,:), lxyz_inv(:,:,:)
       real,  intent(inout) :: lapl(:)
-      integer :: i, j, ip, a, b, c
+      integer :: i, j, k, ip, a, b, c
 
       do ip=1, np
 
          i = lxyz(ip,1)
          j = lxyz(ip,2)
-
-         lapl(ip) = f( lxyz_inv(i+1,j) ) + f( lxyz_inv(i-1,j)) + &
-              f(lxyz_inv(i,j+1)) + f( lxyz_inv(i,j-1)) -4.d0*f(ip)
+         k = lxyz(ip,3)
+         lapl(ip) = f(lxyz_inv(i+1,j,k)) + f(lxyz_inv(i-1,j,k)) + &
+                    f(lxyz_inv(i,j+1,k)) + f(lxyz_inv(i,j-1,k)) + &
+                    f(lxyz_inv(i,j,k+1)) + f(lxyz_inv(i,j,k-1))-6.d0*f(ip)
 
       end do
 

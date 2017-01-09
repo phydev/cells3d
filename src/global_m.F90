@@ -32,14 +32,14 @@ module global_m
   character(len=6), public :: file_name, file_id
   real, public ::  depletion_weight, phi_total
   ! mesh variables
-  integer, allocatable, public :: lxyz(:,:), lxyz_inv(:,:),  grid_cell_domain(:)
-  integer, public :: Lsize(1:2), np_bndry
+  integer, allocatable, public :: lxyz(:,:), lxyz_inv(:,:,:),  grid_cell_domain(:)
+  integer, public :: Lsize(1:3), np_bndry
   integer, public :: np, np_tt, ip
   real, allocatable, public :: gg(:,:), density(:), r_cm(:,:), r_cm_part(:,:)
   type(mesh_t), allocatable, public :: cell(:,:), aux(:,:)
   ! chemical variables
   real, allocatable, public :: chem(:), gchem(:,:)
-  real, public :: chemresponse, metcoef 
+  real, public :: chemresponse, metcoef, chi
   ! new
   real, public :: self_int, sum_int, wgamma(10)
   integer, public :: jcell, icell, tcell
@@ -50,10 +50,10 @@ module global_m
   real, public :: hs, time_init, time_end, ctime, phi_max, hphi, fnu
   logical, public :: periodic
 
-  integer, public :: np_sphere, sphere(1000,1:2)
+  integer, public :: np_sphere, sphere(1000,1:3)
   ! local variables
-  integer,allocatable, public :: lxyz_part(:,:), lxyz_inv_part(:,:), gammaw(:)
-  integer, public :: Lsize_part(2), np_part, np_part_tt, ntype, nleap, dri(2), drf(2), dr(2),&
+  integer,allocatable, public :: lxyz_part(:,:), lxyz_inv_part(:,:,:), gammaw(:)
+  integer, public :: Lsize_part(3), np_part, np_part_tt, ntype, nleap, dri(3), drf(3), dr(3),&
   itype, np_part_bndry, ip2, ip_global
 
   ! coupling constants between the cell_radius
