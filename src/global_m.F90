@@ -28,29 +28,35 @@ module global_m
   !  begin parameters
   real, public :: cell_radius, interface_width,  dt
   integer, public :: tstep, iseed, temp, ip_part2, ip_part
-  character(len=3), public :: dir_name
+  character(len=3), public :: dir_name, sim_id
+  character(len=6), public :: arg_iseed
+  character(len=4), public :: arg_porosity
   character(len=6), public :: file_name, file_id
   real, public ::  depletion_weight, phi_total
   ! mesh variables
   integer, allocatable, public :: lxyz(:,:), lxyz_inv(:,:,:),  grid_cell_domain(:)
   integer, public :: Lsize(1:3), np_bndry
   integer, public :: np, np_tt, ip
-  real, allocatable, public :: gg(:,:), density(:), r_cm(:,:), r_cm_part(:,:)
+  real, allocatable, public :: gg(:,:), density(:), r_cm(:,:), r_cm_part(:,:), r_cmg(:,:)
   type(mesh_t), allocatable, public :: cell(:,:), aux(:,:)
-  ! chemical variables
-  real, allocatable, public :: chem(:), gchem(:,:)
-  real, public :: chemresponse, metcoef, chi
+  ! chemical and substrate variables
+  real, allocatable, public :: chem(:), gchem(:,:), s(:), shfield(:), shfield_lapl(:)
+  real, public :: chemresponse, metcoef, chi, scoef, adhs
+  ! velocity
+  real, public, allocatable :: velocity(:), path(:)
+  real, public :: rt(3), vt(3)
+  integer, public :: vcounter
   ! new
   real, public :: self_int, sum_int, wgamma(10)
-  integer, public :: jcell, icell, tcell
+  integer, public :: jcell, icell, tcell, i, j, k
   integer, allocatable, public :: ncell(:), r(:)
   real, allocatable, public :: f(:), mu(:), lapl(:)
   ! misc
   integer, public :: nstep, counter = 0, ndim, output_period, extra_steps
-  real, public :: hs, time_init, time_end, ctime, phi_max, hphi, fnu
+  real, public :: hs, time_init, time_end, ctime, phi_max, hphi, fnu, porosity
   logical, public :: periodic
 
-  integer, public :: np_sphere, sphere(1000,1:3)
+  integer, public :: np_sphere, sphere(1000,1:3),  porous(1000,1:3), np_porous, nParticle
   ! local variables
   integer,allocatable, public :: lxyz_part(:,:), lxyz_inv_part(:,:,:), gammaw(:)
   integer, public :: Lsize_part(3), np_part, np_part_tt, ntype, nleap, dri(3), drf(3), dr(3),&

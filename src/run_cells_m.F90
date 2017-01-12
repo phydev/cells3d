@@ -33,11 +33,16 @@ module run_cells_m
 
   contains
 
-    subroutine run_cells()
+    subroutine run_cells(sim_id, porosity, iseed)
 
       implicit none
 
+      real, intent(in) :: porosity
+      integer, intent(in) :: iseed
+      character(3), intent(in) :: sim_id
 
+      dir_name = sim_id
+      write(*,*) porosity, iseed, sim_id
       ! initializing parameters
       call  parameters_init(cell_radius, ntype, density, interface_width, tstep, dt, Lsize, dr, dir_name, iseed,&
            np_bndry, depletion_weight, adh1, adh2, output_period, periodic)
@@ -73,12 +78,17 @@ module run_cells_m
       ALLOCATE(hfield(0:np_part,tcell))
       ALLOCATE(hfield_lapl(0:np_part,tcell))
       ALLOCATE(gg(1:np,1:3))
+      ALLOCATE(s(1:np))
+      ALLOCATE(shfield(0:np))
+      ALLOCATE(shfield_lapl(0:np))
       ALLOCATE(chem(1:np))
       ALLOCATE(gchem(1:np,1:3))
       ALLOCATE(r(1:tcell))
-
+      ALLOCATE(velocity(1:tstep))
       ALLOCATE(r_cm(1:tcell,1:3))
       ALLOCATE(r_cm_part(1:tcell,1:3))
+      ALLOCATE(r_cmg(1:tcell,1:3))
+      ALLOCATE(path(1:np))
       ALLOCATE(volume(1:tcell))
       !call system('rm 001/*')
 
@@ -112,7 +122,7 @@ module run_cells_m
         r(1) = lxyz_inv(0,-7,0) !(-6,10)
         r(2) = lxyz_inv(0,7,0) !(8,-10)
       elseif(tcell.eq.1) then
-        r(1) = lxyz_inv(-15,0,0)
+        r(1) = lxyz_inv(-15,-5,0)
       else
         dr = (/ int(2.0*cell_radius),  int(2.0*cell_radius), ntype*int(anint(2.0*cell_radius)) /)
         dri = (/ 2*int(cell_radius), 2*int(cell_radius), 2*int(cell_radius) /)
@@ -144,6 +154,24 @@ module run_cells_m
       end if
 
 
+    
+      call gen_cell_points(2.0,porous,np_porous)
+      call substrate_init(porosity, s, np, porous, np_porous, Lsize, lxyz, lxyz_inv, iseed)
+
+      do i=1, np_sphere
+        s(lxyz_inv(lxyz(r(1),1)+sphere(i,1),lxyz(r(1),2)+sphere(i,2),lxyz(r(1),3)+sphere(i,3) ) ) = 0.d0
+      end do
+
+      ! calculating the h(s) function
+      do ip=1, np
+        shfield(ip) = hfunc(s(ip))
+      end do
+      ! calculating the laplacian of the h(s) field substrate
+      call dderivatives_lapl(shfield(0:np), shfield_lapl(1:np), &
+      np, dr, lxyz, lxyz_inv)
+
+
+      call output(s, 300, 7, 'subs0000',dir_name, 1, ntype, np, lxyz)
       ! saving the initial condition
       !call output_aux(cell, 100, 7, 'phi0000',dir_name, 1, 1, np_part, lxyz_part)
       !call output_aux(aux, 200, 7, 'aux0000',dir_name, 1, ntype, np, lxyz)
@@ -156,8 +184,13 @@ module run_cells_m
       cm_calc_counter = 0
       vol_lagrangian = 1.d0
       adh2 = 1.49*adh1
-      metcoef = 2.d0
-      chi = 1.d0
+      scoef = 1.0
+      metcoef = 0.d0
+      chi = 4.d0
+      adhs = 0.5
+      vcounter = 100
+      path(:) = 0.d0
+      open(UNIT=500, FILE=dir_name//'/vt.dat')
       write(*,'(A)') "Initiating the core program... "
       do while(nstep<=tstep)
          nstep = nstep + 1
@@ -212,7 +245,7 @@ module run_cells_m
 
               cell(ip,icell)%mu = interface_width*cell(ip,icell)%lapl_phi +&
                    cell(ip,icell)%phi*(1.d0-cell(ip,icell)%phi)*(cell(ip,icell)%phi - 0.50 + &
-                   vol_lagrangian*(volume_target-volume(icell)) - depletion_weight*fnu) - chi*chemresponse/2.d0 +&
+                   vol_lagrangian*(volume_target-volume(icell)) - depletion_weight*fnu - scoef*hfunc(s(ip_global))) - chi*chemresponse/2.d0 +&
                    metcoef*(8.0-16.0*ran2(iseed) )*cell(ip,icell)%phi*(1.d0-cell(ip,icell)%phi)
 
 
@@ -221,6 +254,7 @@ module run_cells_m
 
 
          ! calculating laplacian(Gamma_l - hfunc(phi_m)*delta_k)
+
          do icell=1, tcell
            call dderivatives_lapl(hfield(0:np_part,icell), hfield_lapl(1:np_part,icell), &
            np_part, dr, lxyz_part, lxyz_inv_part)
@@ -232,8 +266,10 @@ module run_cells_m
 
          do ip=1, np_part
            do icell=1, tcell
+             call vec_local2global(ip_global, r(icell), ip, lxyz, lxyz_inv, lxyz_part)
              cell(ip,icell)%mu =  cell(ip,icell)%mu + cell(ip,icell)%phi*(1.0-cell(ip,icell)%phi)*&
-                                  (adh1*cell(ip,icell)%lapl_h + adh2*hfield_lapl(ip,icell)) ! 0.0065 , 0.01
+                                  (adh1*cell(ip,icell)%lapl_h + adh2*hfield_lapl(ip,icell)) + & ! 0.0065 , 0.01
+                                  adhs*cell(ip,icell)%phi*(1.d0 -cell(ip,icell)%phi)*shfield_lapl(ip_global)
            end do
          end do
 
@@ -247,15 +283,16 @@ module run_cells_m
          !cm_calc_counter = cm_calc_counter + 1
          !if(cm_calc_counter.eq.10) then
 
-
+           rt(1:3) = r_cmg(1,1:3)
            cm_calc_counter = 0
            call cm_calc_local(r_cm_part, cell, tcell, np_part, r, lxyz_part, lxyz_inv_part)
            do icell=1, tcell
              ip = lxyz_inv_part(int(r_cm_part(icell,1)),int(r_cm_part(icell,2)),int(r_cm_part(icell,3)))
              call vec_local2global(ip_global, r(icell), ip, lxyz, lxyz_inv, lxyz_part)
-             r_cm(icell,1:3) = lxyz(ip_global,1:3) + FRACTION(r_cm_part(icell,1:3))
+             r_cm(icell,1:3) = real(lxyz(ip_global,1:3)) + FRACTION(r_cm_part(icell,1:3))
            end do
-           !call cm_calc(r_cm, cell, tcell, np, np_part, r, lxyz, lxyz_inv, lxyz_inv_part)
+           path(ip_global) = 1.0
+
            call move(cell, r_cm, r, np, np_part, tcell, lxyz, lxyz_part, lxyz_inv, lxyz_inv_part, Lsize)
 
 
@@ -323,7 +360,7 @@ module run_cells_m
 
 
       end do
-
+      close(500)
       if(tcell.eq.2) then
         call cm_calc(r_cm, cell, tcell, np, np_part, r, lxyz, lxyz_inv, lxyz_inv_part)
         write(*,'(A,F10.2,F10.2)') "Cell 1 - End Position", r_cm(1,2)
@@ -332,6 +369,8 @@ module run_cells_m
       end if
 
 
+      velocity(1) = (sum(path(1:np))*1.25)/(nstep*dt*0.26)
+      write(*,*) velocity(1)
       !DEALLOCATE(ncell)
 
       !DEALLOCATE(lxyz)
@@ -468,6 +507,7 @@ module run_cells_m
       real ::  delta_r(1:tcell,1:3), ftemp(1:np_part), dimg(1:tcell,1:3)
 
       do icell=1, tcell
+        ! the geringonca is working, so ignore my previous comments Jan 12 2016
         ! I think the problem is the round error in the delta_r
         delta_r(icell,1:3) = r_cm(icell,1:3)-lxyz(r(icell),1:3)
 

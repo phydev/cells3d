@@ -7,10 +7,40 @@ module sim_init_m
 
   private
 
-  public :: chemical_init, single_cell_init, cell_pos_init, space_init, parameters_init, print_header
+  public :: substrate_init, chemical_init, single_cell_init, cell_pos_init, space_init, parameters_init, print_header
 
   contains
 
+    subroutine substrate_init(porosity_target, s, np, sphere, np_sphere, Lsize, lxyz, lxyz_inv, idum)
+
+      real, allocatable, intent(inout) :: s(:)
+      real, intent(in) :: porosity_target
+      integer, allocatable, intent(in) :: lxyz(:,:), lxyz_inv(:,:,:)
+      integer, intent(in) :: np, Lsize(3), sphere(1000,1:3), np_sphere, idum
+      integer :: iParticle, iseed, l
+      real :: porosity, s_volume, t_volume
+
+      t_volume = 8.d0*Lsize(1)*Lsize(2)*Lsize(3)
+
+      s(:) = 0.d0
+      porosity = 1.d0
+
+      do while (porosity.gt.porosity_target)
+        ip = ran2(idum)*np
+
+        do l=1, np_sphere
+          s(lxyz_inv(lxyz(ip,1)+sphere(l,1),lxyz(ip,2)+sphere(l,2),lxyz(ip,3)+sphere(l,3) ) ) = 1.d0
+        end do
+        s_volume = 0.d0
+        do ip=1, np
+          if(s(ip).gt.0) s_volume = s_volume +1.d0
+        end do
+
+        porosity = (t_volume - s_volume)/t_volume
+
+      end do
+
+    end subroutine substrate_init
 
     subroutine chemical_init(chem, np, Lsize, lxyz, lxyz_inv)
 
@@ -237,8 +267,9 @@ module sim_init_m
 
       real, allocatable, intent(inout) :: density(:)
       real, intent(inout) :: cell_radius,  interface_width, dt, depletion_weight, adh1, adh2
-      integer, intent(inout) :: tstep, Lsize(3), iseed, np_bndry, dr(3), output_period, ntypes
-      character(len=3), intent(inout) :: dir_name
+      integer, intent(inout) :: tstep, Lsize(3), np_bndry, dr(3), output_period, ntypes
+      integer, intent(in) :: iseed
+      character(len=3), intent(in) :: dir_name
       character(len=255) :: temp
       logical :: periodic
 
@@ -259,8 +290,6 @@ module sim_init_m
       read(1,*) tstep, temp ! tstep - Total time step
       read(1,*) dt, temp ! dt - Time increment
       read(1,*) Lsize(1:3), dr(1:3), temp !Box Length - x,y,z, dr
-      read(1,*) dir_name, temp ! Simulation name
-      read(1,*) iseed, temp ! Initial Seed for RAN2
       read(1,*) np_bndry, temp ! boundary points
       read(1,*) depletion_weight, temp ! repulsive force coefficient
       read(1,*) adh1, temp ! adhesion const 1
